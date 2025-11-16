@@ -1,0 +1,301 @@
+
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Trening - Planner & Tracker</title>
+<style>
+  :root{font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;--accent:#0b63d6}
+  body{margin:0;padding:0;background:#f6f7fb;color:#111}
+  header{background:linear-gradient(90deg,#fff 0%,#eef5ff 100%);padding:14px 16px;border-bottom:1px solid #e6ecff;display:flex;align-items:center;gap:12px}
+  h1{font-size:18px;margin:0}
+  main{padding:12px;max-width:980px;margin:12px auto}
+  .card{background:#fff;border-radius:10px;padding:12px;margin-bottom:12px;box-shadow:0 1px 4px rgba(20,30,80,0.05)}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .plan-day{border-left:4px solid var(--accent);padding:8px 12px;margin-bottom:8px;border-radius:6px;background:linear-gradient(180deg,#fff,#fbfdff)}
+  table{width:100%;border-collapse:collapse}
+  th,td{padding:6px 8px;text-align:left;border-bottom:1px solid #f0f4ff;font-size:14px}
+  th{background:#fbfdff;font-weight:600}
+  input[type=number]{width:84px;padding:6px;border-radius:6px;border:1px solid #d6e2ff}
+  button{background:var(--accent);color:#fff;padding:8px 10px;border-radius:8px;border:none;cursor:pointer}
+  button.ghost{background:transparent;color:var(--accent);border:1px solid #cfe0ff}
+  .small{font-size:13px;color:#445;opacity:.9}
+  .log-list{max-height:220px;overflow:auto;margin-top:8px}
+  canvas{max-width:100%;height:160px;background:#fff;border-radius:8px;border:1px solid #eef3ff;padding:8px}
+  .flex{display:flex;gap:8px;align-items:center}
+  .checkbox-set{display:flex;gap:6px;align-items:center}
+  .done{background:linear-gradient(90deg,#e6fff0,#f0fff7);border-left:4px solid #2aa76a}
+  footer{padding:12px;text-align:center;color:#667;font-size:13px}
+  @media (max-width:600px){header{padding:10px}main{padding:8px} input[type=number]{width:64px}}
+</style>
+</head>
+<body>
+<header>
+  <div style="width:44px;height:44px;border-radius:10px;background:linear-gradient(90deg,#0b63d6,#5db4ff);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700">TR</div>
+  <div>
+    <h1>Twój Plan Treningowy (maszyny)</h1>
+    <div class="small">Edytuj, zaznacz wykonane serie i śledź progres. Możesz dodać własne ćwiczenia.</div>
+  </div>
+</header>
+<main>
+  <div class="card" id="planCard">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <strong>Plan tygodniowy (Full body, 3 dni)</strong>
+      <div class="flex">
+        <button id="addLogBtn" class="ghost">Zapisz sesję</button>
+        <button id="resetBtn">Reset</button>
+      </div>
+    </div>
+    <div id="planDays" style="margin-top:10px"></div>
+  </div>
+
+  <div class="card">
+    <strong>Rejestr treningów</strong>
+    <div class="small">Zobacz poprzednie sesje i szybkie notatki.</div>
+    <div class="log-list" id="logs"></div>
+  </div>
+
+  <div class="card">
+    <strong>Wykres progresu (ważenie / siła)</strong>
+    <div class="small">Wprowadź wagę po treningu, aby zobaczyć progres.</div>
+    <canvas id="chart" width="800" height="160"></canvas>
+    <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
+      <input type="number" id="weightInput" placeholder="Waga kg" />
+      <button id="saveWeight">Zapisz wagę</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <strong>Instrukcja szybkiego użycia</strong>
+    <ol>
+      <li>Zaznacz serie jako wykonane przy każdym ćwiczeniu.</li>
+      <li>Po treningu kliknij "Zapisz sesję" — zapisze datę, ćwiczenia i wagę.</li>
+      <li>Plik działa w przeglądarce i zapisuje dane lokalnie (localStorage).</li>
+      <li>Aby przenieść plan do innego telefonu: menu przeglądarki → "Udostępnij stronę" → "Zapisz jako PDF" lub skopiuj plik HTML.</li>
+    </ol>
+  </div>
+</main>
+
+<footer>Stworzono automatycznie — możesz edytować ćwiczenia i progres. Dodam nowe funkcje na życzenie.</footer>
+
+<script>
+// Poczatkowy plan (mozesz modyfikowac)
+const defaultPlan = [
+  {day:"Poniedziałek", exercises:[
+    {name:"Leg Press", sets:3, reps:"12-15", weight:""},
+    {name:"Leg Curl", sets:3, reps:"12-15", weight:""},
+    {name:"Chest Press", sets:3, reps:"12-15", weight:""},
+    {name:"Seated Row", sets:3, reps:"12-15", weight:""}
+  ]},
+  {day:"Środa", exercises:[
+    {name:"Lat Pulldown", sets:3, reps:"12-15", weight:""},
+    {name:"Shoulder Press", sets:3, reps:"12-15", weight:""},
+    {name:"Leg Extension", sets:3, reps:"12-15", weight:""}
+  ]},
+  {day:"Piątek", exercises:[
+    {name:"Chest Press", sets:3, reps:"12-15", weight:""},
+    {name:"Back Extension", sets:3, reps:"12-15", weight:""},
+    {name:"Biceps Curl", sets:3, reps:"12-15", weight:""},
+    {name:"Triceps Pushdown", sets:3, reps:"12-15", weight:""}
+  ]},
+];
+
+// Storage keys
+const PLAN_KEY = "training_plan_v1";
+const LOG_KEY = "training_logs_v1";
+const WEIGHT_KEY = "training_weights_v1";
+
+function loadPlan(){
+  const raw = localStorage.getItem(PLAN_KEY);
+  if(raw) return JSON.parse(raw);
+  localStorage.setItem(PLAN_KEY, JSON.stringify(defaultPlan));
+  return defaultPlan;
+}
+
+function savePlan(plan){ localStorage.setItem(PLAN_KEY, JSON.stringify(plan)); }
+
+function loadLogs(){ const raw = localStorage.getItem(LOG_KEY); return raw?JSON.parse(raw):[]; }
+function saveLogs(l){ localStorage.setItem(LOG_KEY, JSON.stringify(l)); }
+
+function loadWeights(){ const raw = localStorage.getItem(WEIGHT_KEY); return raw?JSON.parse(raw):[]; }
+function saveWeights(w){ localStorage.setItem(WEIGHT_KEY, JSON.stringify(w)); }
+
+let PLAN = loadPlan();
+let LOGS = loadLogs();
+let WEIGHTS = loadWeights();
+
+// render plan
+function renderPlan(){
+  const container = document.getElementById("planDays");
+  container.innerHTML = "";
+  PLAN.forEach((p, pi)=>{
+    const div = document.createElement("div");
+    div.className = "plan-day card";
+    const title = document.createElement("div");
+    title.innerHTML = `<strong>${p.day}</strong>`;
+    div.appendChild(title);
+
+    const table = document.createElement("table");
+    const thead = document.createElement("thead");
+    thead.innerHTML = "<tr><th>Ćwiczenie</th><th>Serii</th><th>Powt.</th><th>Ciężar</th><th>Zrobione</th></tr>";
+    table.appendChild(thead);
+    const tbody = document.createElement("tbody");
+    p.exercises.forEach((ex, ei)=>{
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td contenteditable="true" data-day="${pi}" data-ex="${ei}" class="editName">${ex.name}</td>
+                      <td>${ex.sets}</td><td>${ex.reps}</td>
+                      <td><input type="number" value="${ex.weight||''}" data-day="${pi}" data-ex="${ei}" class="winput" /></td>
+                      <td id="sets-${pi}-${ei}"></td>`;
+      // set checkboxes
+      const cell = tr.querySelector(`#sets-${pi}-${ei}`);
+      const box = document.createElement("div");
+      box.className = "checkbox-set";
+      for(let s=1;s<=ex.sets;s++){
+        const cb = document.createElement("input");
+        cb.type="checkbox"; cb.id=`cb-${pi}-${ei}-${s}`; cb.dataset.day=pi; cb.dataset.ex=ei; cb.dataset.set=s;
+        cb.addEventListener("change",updateDoneStyle);
+        box.appendChild(cb);
+      }
+      cell.appendChild(box);
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    div.appendChild(table);
+
+    // controls
+    const controls = document.createElement("div");
+    controls.style.marginTop="8px"; controls.className="row";
+    const addExBtn = document.createElement("button"); addExBtn.className="ghost"; addExBtn.textContent="Dodaj ćwiczenie";
+    addExBtn.onclick = ()=>{ addExercise(pi); }
+    const saveBtn = document.createElement("button"); saveBtn.textContent="Zapisz dzień";
+    saveBtn.onclick = ()=>{ saveDay(pi); };
+    controls.appendChild(addExBtn); controls.appendChild(saveBtn);
+    div.appendChild(controls);
+
+    container.appendChild(div);
+  });
+
+  // attach editable name handlers and weight inputs
+  document.querySelectorAll(".editName").forEach(td=>{
+    td.addEventListener("input", (e)=>{
+      const d = e.target.dataset.day*1; const ex = e.target.dataset.ex*1;
+      PLAN[d].exercises[ex].name = e.target.innerText.trim();
+      savePlan(PLAN);
+    });
+  });
+  document.querySelectorAll(".winput").forEach(inp=>{
+    inp.addEventListener("change", (e)=>{
+      const d = e.target.dataset.day*1; const ex = e.target.dataset.ex*1;
+      PLAN[d].exercises[ex].weight = e.target.value;
+      savePlan(PLAN);
+    });
+  });
+}
+
+function updateDoneStyle(e){
+  // toggle row style if all sets done
+  const pi = e.target.dataset.day; const ei = e.target.dataset.ex;
+  const ex = PLAN[pi].exercises[ei];
+  let all = true; for(let s=1;s<=ex.sets;s++){ const cb = document.getElementById(`cb-${pi}-${ei}-${s}`); if(!cb.checked) { all=false; break; } }
+  const row = document.querySelector(`input[data-day="${pi}"][data-ex="${ei}"]`)?.closest("tr");
+  if(row){ if(all) row.classList.add("done"); else row.classList.remove("done"); }
+}
+
+function addExercise(dayIndex){
+  const name = prompt("Nazwa ćwiczenia:");
+  if(!name) return;
+  PLAN[dayIndex].exercises.push({name, sets:3, reps:"12-15", weight:""});
+  savePlan(PLAN); renderPlan();
+}
+
+function saveDay(dayIndex){
+  // save current checkboxes as a log entry
+  const date = new Date().toISOString();
+  const entries = [];
+  PLAN[dayIndex].exercises.forEach((ex, ei)=>{
+    const performed = [];
+    for(let s=1;s<=ex.sets;s++){ const cb = document.getElementById(`cb-${dayIndex}-${ei}-${s}`); if(cb && cb.checked) performed.push(s); }
+    entries.push({name:ex.name, sets:ex.sets, reps:ex.reps, weight:ex.weight, doneSets:performed.length});
+    // uncheck after save
+    for(let s=1;s<=ex.sets;s++){ const cb = document.getElementById(`cb-${dayIndex}-${ei}-${s}`); if(cb) cb.checked=false; }
+  });
+  LOGS.unshift({date, day:PLAN[dayIndex].day, exercises:entries});
+  if(LOGS.length>200) LOGS.pop();
+  saveLogs(LOGS);
+  renderLogs();
+  renderPlan();
+  alert("Sesja zapisana.");
+}
+
+// logs render
+function renderLogs(){
+  const cont = document.getElementById("logs"); cont.innerHTML="";
+  if(LOGS.length===0){ cont.innerHTML="<div class='small'>Brak zapisanych sesji.</div>"; return; }
+  LOGS.forEach((l, idx)=>{
+    const el = document.createElement("div"); el.style.padding="8px"; el.style.borderBottom="1px solid #f1f6ff";
+    el.innerHTML = `<div style="display:flex;justify-content:space-between"><strong>${new Date(l.date).toLocaleString()}</strong><span class="small">${l.day}</span></div>`;
+    l.exercises.forEach(ex=>{ el.innerHTML += `<div class="small">${ex.name} — ${ex.doneSets}/${ex.sets} (ciężar:${ex.weight||'-'})</div>`; });
+    cont.appendChild(el);
+  });
+}
+
+// weight chart simple
+function renderChart(){
+  const canvas = document.getElementById("chart"); const ctx = canvas.getContext("2d");
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  const data = WEIGHTS.slice().reverse().slice(0,30).reverse();
+  if(data.length===0){ ctx.fillStyle="#667"; ctx.font="14px system-ui"; ctx.fillText("Brak zapisanej wagi",12,22); return; }
+  // scales
+  const vals = data.map(d=>d.w*1);
+  const min = Math.min(...vals)-1; const max = Math.max(...vals)+1;
+  const pad = 24; const w = canvas.width-2*pad; const h = canvas.height-2*pad;
+  // axes
+  ctx.strokeStyle="#e6eefc"; ctx.beginPath();
+  for(let i=0;i<5;i++){ ctx.moveTo(pad, pad + i*(h/4)); ctx.lineTo(pad+w, pad + i*(h/4)); }
+  ctx.stroke();
+  // line
+  ctx.beginPath(); ctx.strokeStyle="#0b63d6"; ctx.lineWidth=2;
+  data.forEach((d,i)=>{
+    const x = pad + (i/(data.length-1||1))*w;
+    const y = pad + h - ((d.w - min)/(max-min||1))*h;
+    if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    // dot
+    ctx.fillStyle="#0b63d6"; ctx.beginPath(); ctx.arc(x,y,3,0,2*Math.PI); ctx.fill();
+  });
+  ctx.stroke();
+  // left labels
+  ctx.fillStyle="#445"; ctx.font="12px system-ui";
+  ctx.fillText(max.toFixed(1),6,pad+6); ctx.fillText(min.toFixed(1),6,pad+h+4);
+}
+
+// save weight
+document.getElementById("saveWeight").addEventListener("click", ()=>{
+  const v = parseFloat(document.getElementById("weightInput").value);
+  if(!v){ alert("Podaj poprawną wagę"); return; }
+  WEIGHTS.push({d:new Date().toISOString(), w:v}); saveWeights(WEIGHTS); document.getElementById("weightInput").value="";
+  renderChart();
+});
+
+// add log button
+document.getElementById("addLogBtn").addEventListener("click", ()=>{
+  const todays = new Date().toLocaleDateString();
+  const choice = prompt("Który dzień zapisać? Wpisz: Poniedziałek / Środa / Piątek (lub inny):", "Poniedziałek");
+  if(!choice) return;
+  const idx = PLAN.findIndex(p=>p.day.toLowerCase()===choice.toLowerCase());
+  if(idx===-1){ if(!confirm("Nie znaleziono dnia. Chcesz zapisać pustą sesję?")) return; }
+  const dayIdx = idx>=0?idx:0;
+  saveDay(dayIdx);
+});
+
+document.getElementById("resetBtn").addEventListener("click", ()=>{
+  if(!confirm("Zresetować plan i logi do domyślnych?")) return;
+  localStorage.removeItem(PLAN_KEY); localStorage.removeItem(LOG_KEY); localStorage.removeItem(WEIGHT_KEY);
+  PLAN = loadPlan(); LOGS = loadLogs(); WEIGHTS = loadWeights(); renderPlan(); renderLogs(); renderChart();
+});
+
+// initial render
+renderPlan(); renderLogs(); renderChart();
+</script>
+</body>
+</html>
